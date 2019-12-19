@@ -6,17 +6,25 @@ export default class Compiler extends Tapable {
     super();
   }
 
-  compile() {
+  compile(callback) {
     const compilation = new Compilation(this);
+
     this.callAsyncParallel('make', compilation, function() {
-      compilation.finish();
-      compilation.seal();
+      compilation.seal(() => {
+        callback(compilation);
+      });
     })
   }
 
-  emitAssets() {}
+  emitAssets(compilation) {
+    console.log('compiler: emitting assets');
+  }
 
+  // compile: make => seal => emit
   run() {
-    this.compile()
+    console.log('compiler: beginning run a compilation')
+    this.compile((compilation) => {
+      this.emitAssets(compilation);
+    })
   }
 }

@@ -7,7 +7,15 @@ export default class Compilation extends Tapable {
     this.modules = [];
   }
 
-  finish() {}
+  addEntry(entry, name, callback) {
+    console.log(`compilation: adding entry ${entry}`);
+    callback();
+  }
 
-  seal() {}
+  processModuleDependencies() {}
+
+  seal(callback) {
+    console.log('compilation: sealing');
+    callback();
+  }
 }

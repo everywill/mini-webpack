@@ -3,7 +3,7 @@ export default class Tapable {
     this.tasks = {};
   }
 
-  tabSync(name, task) {
+  tap(name, task) {
     this.tasks[name] = this.tasks[name] || [];
     this.tasks[name].push(task);
   }
