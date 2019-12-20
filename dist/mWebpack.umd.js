@@ -90,11 +90,39 @@
       super();
       this.compiler = compiler;
       this.modules = [];
+      this.dependencyFactories = new Map();
     }
 
     addEntry(entry, name, callback) {
-      console.log(`compilation: adding entry ${entry}`);
+      console.log(`compilation: adding entry ${JSON.stringify(entry)}`);
       callback();
+    }
+
+    processModuleDependencies(module) {
+      const dependenies = [];
+      let dep;
+      let isDepExists;
+
+      for (let i = 0, l = module.dependenies.length; i < l; i++) {
+        dep = module.dependenies[i];
+        isDepExists = false;
+        for (let j = 0, k = dependenies.length; j < k; j++) {
+          if (dep.isEqualResource(dependenies[j][0])) {
+            isDepExists = true;
+            dependenies[j].push(dep);
+            break;
+          }
+        }
+        if (!isDepExists) {
+          dependenies.push([dep]);
+        }
+      }
+
+      this.addModuleDependencies(module, dependenies);
+    }
+
+    addModuleDependencies(module, dependenies) {
+
     }
 
     seal(callback) {
@@ -131,12 +159,32 @@
     }
   }
 
+  class ModuleDependency {
+    constructor(request) {
+      this.request = request;
+    }
+    isEqualResource(dep) {
+      return dep.request === this.request;
+    }
+  }
+
+  class ModuleFactory extends Tapable {
+    constructor() {
+      super();
+    }
+    create() {}
+  }
+
   class EntryOptionPlugin {
     constructor() {
       this.name = 'main';
       this.entry = '';
     }
     apply(compiler) {
+      compiler.tap('compilation', (compilation) => {
+        compilation.dependencyFactories.set(ModuleDependency, ModuleFactory);
+      });
+      
       compiler.tap('entry-option', (entry) => {
         this.entry = entry;
         console.log(`receiving entry-point: ${entry}`);
@@ -144,7 +192,7 @@
       });
 
       compiler.tap('make', (compilation, callback) => {
-        compilation.addEntry(this.entry, this.name, callback);
+        compilation.addEntry(new ModuleDependency(this.entry), this.name, callback);
       });
     }
   }

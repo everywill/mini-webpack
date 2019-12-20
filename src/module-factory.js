@@ -4,4 +4,5 @@ export default class ModuleFactory extends Tapable {
   constructor() {
     super();
   }
+  create() {}
 }
