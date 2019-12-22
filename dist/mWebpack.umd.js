@@ -89,40 +89,68 @@
     constructor(compiler) {
       super();
       this.compiler = compiler;
+      this.entries = [];
+      this.chunks = [];
       this.modules = [];
       this.dependencyFactories = new Map();
     }
 
-    addEntry(entry, name, callback) {
-      console.log(`compilation: adding entry ${JSON.stringify(entry)}`);
-      callback();
+    addEntry(context, entry, name, callback) {
+      this._addModuleChain(context, entry, (module) => {
+        this.entries.push(module);
+      }, (module) => {
+        console.log('compilation: entry module completed');
+        callback();
+      });
     }
 
-    processModuleDependencies(module) {
-      const dependenies = [];
+    _addModuleChain(context, dependency, onModule, callback) {
+      const moduleFactory = this.dependencyFactories.get(dependency.constructor);
+
+      const createdModule = moduleFactory.create({
+        dependencies: [dependency],
+        context,
+      });
+
+      onModule(createdModule);
+      this.buildModule(createdModule, () => {
+        this.processModuleDependencies(createdModule, callback);
+      });
+    }
+
+    buildModule(module, callback) {
+      console.log(`compilation: starting building module\n${JSON.stringify(module)}`);
+      module.build(() => {
+        callback();
+      });
+    }
+
+    processModuleDependencies(module, callback) {
+      const dependencies = [];
       let dep;
       let isDepExists;
 
-      for (let i = 0, l = module.dependenies.length; i < l; i++) {
-        dep = module.dependenies[i];
+      for (let i = 0, l = module.dependencies.length; i < l; i++) {
+        dep = module.dependencies[i];
         isDepExists = false;
-        for (let j = 0, k = dependenies.length; j < k; j++) {
-          if (dep.isEqualResource(dependenies[j][0])) {
+        for (let j = 0, k = dependencies.length; j < k; j++) {
+          if (dep.isEqualResource(dependencies[j][0])) {
             isDepExists = true;
-            dependenies[j].push(dep);
+            dependencies[j].push(dep);
             break;
           }
         }
         if (!isDepExists) {
-          dependenies.push([dep]);
+          dependencies.push([dep]);
         }
       }
 
-      this.addModuleDependencies(module, dependenies);
+      this.addModuleDependencies(module, dependencies, callback);
     }
 
-    addModuleDependencies(module, dependenies) {
-
+    addModuleDependencies(module, dependencies, callback) {
+      console.log(`compilation: adding dependencies\n${JSON.stringify(dependencies)}`);
+      callback();
     }
 
     seal(callback) {
@@ -131,13 +159,30 @@
     }
   }
 
+  const path = require('path');
+
+  var ResolverFactory = {
+    createResolver() {
+      return (context, request) => {
+        return path.resolve(context, request);
+      }
+    }
+  };
+
   class Compiler extends Tapable {
     constructor() {
       super();
+      this.resolver = ResolverFactory.createResolver();
     }
 
     compile(callback) {
       const compilation = new Compilation(this);
+
+      console.log('compiler: created a new compilation');
+
+      this.callSync('compilation', compilation, {
+        resolver: this.resolver,
+      });
 
       this.callAsyncParallel('make', compilation, function() {
         compilation.seal(() => {
@@ -152,7 +197,7 @@
 
     // compile: make => seal => emit
     run() {
-      console.log('compiler: beginning run a compilation');
+      console.log('compiler: beginning running');
       this.compile((compilation) => {
         this.emitAssets(compilation);
       });
@@ -168,21 +213,79 @@
     }
   }
 
-  class ModuleFactory extends Tapable {
-    constructor() {
-      super();
+  const path$1 = require('path');
+
+  function getContext(resource) {
+    return path$1.dirname(resource);
+  }
+
+  class Module {
+    constructor(params) {
+      this.request = params.request;
+      this.resource = params.resource;
+      this.context = getContext(params.resource);
+      this.dependencies = [];
     }
-    create() {}
+
+    build(callback) {
+      console.log('module: building');
+      callback();
+    }
+  }
+
+  class ModuleFactory extends Tapable {
+    constructor(params) {
+      super();
+      this.resolver = params.resolver;
+
+      this.tap('factory', () => {
+        return (result) => {
+          const resolver = this.callWaterfall('resolver', null);
+          const data = resolver(result);
+
+          const createdModule = new Module({
+            request: result.request,
+            resource: data,
+          });
+
+          return createdModule;
+        };
+      });
+
+      this.tap('resolver', () => {
+        return (data) => {
+          const context = data.context;
+          const request = data.request;
+
+          return this.resolver(context, request);
+        };
+      });
+    }
+
+    create(data) {
+      const dependencies = data.dependencies;
+      const context = data.context;
+      const request = dependencies[0].request;
+
+      const factory = this.callWaterfall('factory', null);
+      const createdModule = factory({context, request});
+
+      console.log(`moduleFactory: created module\n${JSON.stringify(createdModule)}`);
+      return createdModule;
+    }
   }
 
   class EntryOptionPlugin {
-    constructor() {
+    constructor(context) {
       this.name = 'main';
       this.entry = '';
+      this.context = context;
     }
     apply(compiler) {
-      compiler.tap('compilation', (compilation) => {
-        compilation.dependencyFactories.set(ModuleDependency, ModuleFactory);
+      compiler.tap('compilation', (compilation, params) => {
+        const moduleFactory = new ModuleFactory(params);
+        
+        compilation.dependencyFactories.set(ModuleDependency, moduleFactory);
       });
       
       compiler.tap('entry-option', (entry) => {
@@ -192,7 +295,11 @@
       });
 
       compiler.tap('make', (compilation, callback) => {
-        compilation.addEntry(new ModuleDependency(this.entry), this.name, callback);
+        const entry = new ModuleDependency(this.entry);
+
+        console.log(`entry-option-plugin: adding entry to compilation\n${JSON.stringify(entry)}`);
+
+        compilation.addEntry(this.context, entry, this.name, callback);
       });
     }
   }
@@ -202,7 +309,7 @@
     compiler.options = options;
 
     // notify entry-point
-    new EntryOptionPlugin().apply(compiler);
+    new EntryOptionPlugin(process.cwd()).apply(compiler);
     compiler.callSyncBail('entry-option', options.entry);
 
     return compiler;

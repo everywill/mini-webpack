@@ -6,7 +6,7 @@ export default function webpack(options) {
   compiler.options = options;
 
   // notify entry-point
-  new EntryOptionPlugin().apply(compiler);
+  new EntryOptionPlugin(process.cwd()).apply(compiler);
   compiler.callSyncBail('entry-option', options.entry);
 
   return compiler;

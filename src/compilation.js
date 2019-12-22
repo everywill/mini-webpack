@@ -10,27 +10,42 @@ export default class Compilation extends Tapable {
     this.dependencyFactories = new Map();
   }
 
-  addEntry(entry, name, callback) {
-    console.log(`compilation: adding entry ${JSON.stringify(entry)}`);
+  addEntry(context, entry, name, callback) {
     const slot = {
       name,
       module: null,
     }
-    this._addModuleChain(entry, (module) => {
+    this._addModuleChain(context, entry, (module) => {
       this.entries.push(module);
     }, (module) => {
       slot.module = module;
-
-      return callback(module);
+      console.log('compilation: entry module completed');
+      callback();
     })
   }
 
-  _addModuleChain(dependency, onModule, callback) {
+  _addModuleChain(context, dependency, onModule, callback) {
     const moduleFactory = this.dependencyFactories.get(dependency.constructor);
-    moduleFactory.create();
+
+    const createdModule = moduleFactory.create({
+      dependencies: [dependency],
+      context,
+    });
+
+    onModule(createdModule);
+    this.buildModule(createdModule, () => {
+      this.processModuleDependencies(createdModule, callback);
+    })
   }
 
-  processModuleDependencies(module) {
+  buildModule(module, callback) {
+    console.log(`compilation: starting building module\n${JSON.stringify(module)}`);
+    module.build(() => {
+      callback();
+    })
+  }
+
+  processModuleDependencies(module, callback) {
     const dependencies = [];
     let dep;
     let isDepExists;
@@ -46,15 +61,16 @@ export default class Compilation extends Tapable {
         }
       }
       if (!isDepExists) {
-        dependenies.push([dep]);
+        dependencies.push([dep]);
       }
     }
 
-    this.addModuleDependencies(module, dependencies);
+    this.addModuleDependencies(module, dependencies, callback);
   }
 
-  addModuleDependencies(module, dependencies) {
-
+  addModuleDependencies(module, dependencies, callback) {
+    console.log(`compilation: adding dependencies\n${JSON.stringify(dependencies)}`);
+    callback();
   }
 
   seal(callback) {
