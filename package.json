@@ -14,5 +14,8 @@
     "prepublishOnly": "npm run build"
   },
   "license": "MIT",
-  "author": "everywill <everywillatchina@gmail.com>"
+  "author": "everywill <everywillatchina@gmail.com>",
+  "dependencies": {
+    "acorn": "^7.1.0"
+  }
 }

@@ -1,5 +1,4 @@
-import ModuleDependency from '../dependencies/module-dependency';
-import ModuleFactory from '../module-factory';
+import EntryDependency from '../dependencies/entry-dependency';
 
 export default class EntryOptionPlugin {
   constructor(context) {
@@ -8,11 +7,6 @@ export default class EntryOptionPlugin {
     this.context = context;
   }
   apply(compiler) {
-    compiler.tap('compilation', (compilation, params) => {
-      const moduleFactory = new ModuleFactory(params);
-      
-      compilation.dependencyFactories.set(ModuleDependency, moduleFactory);
-    });
     
     compiler.tap('entry-option', (entry) => {
       this.entry = entry;
@@ -21,7 +15,7 @@ export default class EntryOptionPlugin {
     });
 
     compiler.tap('make', (compilation, callback) => {
-      const entry = new ModuleDependency(this.entry);
+      const entry = new EntryDependency(this.entry);
 
       console.log(`entry-option-plugin: adding entry to compilation\n${JSON.stringify(entry)}`);
 

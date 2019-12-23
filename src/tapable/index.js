@@ -8,6 +8,12 @@ export default class Tapable {
     this.tasks[name].push(task);
   }
 
+  apply(...plugins) {
+    for (let i = 0, l = plugins.length; i < l; i++) {
+      plugins[i].apply(this);
+    }
+  }
+
   callSync(name, ...args) {
     const tasks = this.tasks[name];
     for (let i = 0, l = tasks.length; i < l; i++) {

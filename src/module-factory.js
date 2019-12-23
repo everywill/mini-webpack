@@ -1,5 +1,6 @@
 import Tapable from './tapable/index';
 import Module from './module';
+import Parser from './parser';
 
 export default class ModuleFactory extends Tapable {
   constructor(params) {
@@ -14,6 +15,7 @@ export default class ModuleFactory extends Tapable {
         const createdModule = new Module({
           request: result.request,
           resource: data,
+          parser: new Parser(),
         })
 
         return createdModule;

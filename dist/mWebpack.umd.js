@@ -1,8 +1,10 @@
 (function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-  typeof define === 'function' && define.amd ? define(factory) :
-  (global = global || self, global.mWebpack = factory());
-}(this, (function () { 'use strict';
+  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('acorn')) :
+  typeof define === 'function' && define.amd ? define(['acorn'], factory) :
+  (global = global || self, global.mWebpack = factory(global.acorn));
+}(this, (function (acorn) { 'use strict';
+
+  acorn = acorn && acorn.hasOwnProperty('default') ? acorn['default'] : acorn;
 
   class Tapable {
     constructor() {
@@ -12,6 +14,12 @@
     tap(name, task) {
       this.tasks[name] = this.tasks[name] || [];
       this.tasks[name].push(task);
+    }
+
+    apply(...plugins) {
+      for (let i = 0, l = plugins.length; i < l; i++) {
+        plugins[i].apply(this);
+      }
     }
 
     callSync(name, ...args) {
@@ -213,7 +221,37 @@
     }
   }
 
+  class EntryOptionPlugin {
+    constructor(context) {
+      this.name = 'main';
+      this.entry = '';
+      this.context = context;
+    }
+    apply(compiler) {
+      
+      compiler.tap('entry-option', (entry) => {
+        this.entry = entry;
+        console.log(`receiving entry-point: ${entry}`);
+        return true;
+      });
+
+      compiler.tap('make', (compilation, callback) => {
+        const entry = new ModuleDependency(this.entry);
+
+        console.log(`entry-option-plugin: adding entry to compilation\n${JSON.stringify(entry)}`);
+
+        compilation.addEntry(this.context, entry, this.name, callback);
+      });
+    }
+  }
+
+  class ImportDependency {
+    constructor() {}
+  }
+
   const path$1 = require('path');
+  const fs = require('fs');
+  const readFile = fs.readFile.bind(fs);
 
   function getContext(resource) {
     return path$1.dirname(resource);
@@ -225,11 +263,56 @@
       this.resource = params.resource;
       this.context = getContext(params.resource);
       this.dependencies = [];
+      this.parser = params.parser;
     }
 
     build(callback) {
       console.log('module: building');
-      callback();
+
+      readFile(this.resource, (err, data) => {
+        this._source = data.toString();
+        this.parser.parse(this._source, {
+          current: this,
+        });
+        return callback();
+      });
+      
+    }
+
+    addDependency(dep) {
+      this.dependencies.push(dep);
+    }
+  }
+
+  class Parser extends Tapable {
+    constructor() {
+      super();
+      // store the processing module
+      this.state = undefined;
+    }
+    parse(source, state) {
+      this.state = state;
+      const ast = acorn.parse(source, {
+        sourceType: 'module',
+      });
+      this.walkStatements(ast.body);
+    }
+
+    walkStatements(statements) {
+      for (let i = 0, l = statements.length; i < l; i++) {
+        this.walkStatement(statements[i]);
+      }
+    }
+
+    walkStatement(statement) {
+      const handler = this[`walk${statement.type}`];
+      if (handler) {
+        handler.call(this, statement);
+      }
+    }
+
+    walkImportDeclaration(statement) {
+      
     }
   }
 
@@ -246,6 +329,7 @@
           const createdModule = new Module({
             request: result.request,
             resource: data,
+            parser: new Parser(),
           });
 
           return createdModule;
@@ -275,31 +359,13 @@
     }
   }
 
-  class EntryOptionPlugin {
-    constructor(context) {
-      this.name = 'main';
-      this.entry = '';
-      this.context = context;
-    }
+  class ModulePlugin {
     apply(compiler) {
       compiler.tap('compilation', (compilation, params) => {
         const moduleFactory = new ModuleFactory(params);
         
         compilation.dependencyFactories.set(ModuleDependency, moduleFactory);
-      });
-      
-      compiler.tap('entry-option', (entry) => {
-        this.entry = entry;
-        console.log(`receiving entry-point: ${entry}`);
-        return true;
-      });
-
-      compiler.tap('make', (compilation, callback) => {
-        const entry = new ModuleDependency(this.entry);
-
-        console.log(`entry-option-plugin: adding entry to compilation\n${JSON.stringify(entry)}`);
-
-        compilation.addEntry(this.context, entry, this.name, callback);
+        compilation.dependencyFactories.set(ImportDependency, ModuleFactory);
       });
     }
   }
@@ -308,8 +374,12 @@
     const compiler = new Compiler();
     compiler.options = options;
 
+    compiler.apply(
+      new EntryOptionPlugin(process.cwd()),
+      new ModulePlugin(),
+    );
+
     // notify entry-point
-    new EntryOptionPlugin(process.cwd()).apply(compiler);
     compiler.callSyncBail('entry-option', options.entry);
 
     return compiler;
