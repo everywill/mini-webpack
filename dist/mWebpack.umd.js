@@ -107,7 +107,7 @@
       this._addModuleChain(context, entry, (module) => {
         this.entries.push(module);
       }, (module) => {
-        console.log('compilation: entry module completed');
+        console.log('compilation(addEntry): entry module completed\n');
         callback();
       });
     }
@@ -120,14 +120,19 @@
         context,
       });
 
+      this.addModule(createdModule);
+
       onModule(createdModule);
       this.buildModule(createdModule, () => {
         this.processModuleDependencies(createdModule, callback);
       });
     }
 
+    addModule(module) {
+      this.modules.push(module);
+    }
+
     buildModule(module, callback) {
-      console.log(`compilation: starting building module\n${JSON.stringify(module)}`);
       module.build(() => {
         callback();
       });
@@ -157,12 +162,39 @@
     }
 
     addModuleDependencies(module, dependencies, callback) {
-      console.log(`compilation: adding dependencies\n${JSON.stringify(dependencies)}`);
-      callback();
+      console.log(`compilation(addModuleDependencies): adding \n${JSON.stringify(dependencies)}\n`);
+
+      if (dependencies.length === 0) {
+        callback();
+      }
+
+      let i = 0;
+
+      const done = () => {
+        if (++i === dependencies.length) {
+          callback();
+        }
+      };
+
+      for (let i = 0, l = dependencies.length; i < l; i++) {
+        debugger
+        const moduleFactory = this.dependencyFactories.get(dependencies[i][0].constructor);
+        const dependentModule = moduleFactory.create({
+          dependencies: dependencies[i],
+          context: module.context,
+        });
+
+        this.addModule(dependentModule);
+
+        this.buildModule(dependentModule, () => {
+          this.processModuleDependencies(dependentModule, done);
+        });
+      }
     }
 
     seal(callback) {
-      console.log('compilation: sealing');
+      console.log('compilation(seal): sealing\n');
+      debugger
       callback();
     }
   }
@@ -186,7 +218,7 @@
     compile(callback) {
       const compilation = new Compilation(this);
 
-      console.log('compiler: created a new compilation');
+      console.log('compiler(compile): created a new compilation\n');
 
       this.callSync('compilation', compilation, {
         resolver: this.resolver,
@@ -200,24 +232,29 @@
     }
 
     emitAssets(compilation) {
-      console.log('compiler: emitting assets');
+      console.log('compiler(emitAssets): emitting assets');
     }
 
     // compile: make => seal => emit
     run() {
-      console.log('compiler: beginning running');
       this.compile((compilation) => {
         this.emitAssets(compilation);
       });
     }
   }
 
-  class ModuleDependency {
+  class Dependency {
     constructor(request) {
       this.request = request;
     }
     isEqualResource(dep) {
       return dep.request === this.request;
+    }
+  }
+
+  class EntryDependency extends Dependency {
+    constructor(request) {
+      super(request);
     }
   }
 
@@ -231,22 +268,23 @@
       
       compiler.tap('entry-option', (entry) => {
         this.entry = entry;
-        console.log(`receiving entry-point: ${entry}`);
         return true;
       });
 
       compiler.tap('make', (compilation, callback) => {
-        const entry = new ModuleDependency(this.entry);
+        const entry = new EntryDependency(this.entry);
 
-        console.log(`entry-option-plugin: adding entry to compilation\n${JSON.stringify(entry)}`);
+        console.log(`entry-option-plugin: adding entry to compilation\n${JSON.stringify(entry)}\n`);
 
         compilation.addEntry(this.context, entry, this.name, callback);
       });
     }
   }
 
-  class ImportDependency {
-    constructor() {}
+  class ImportDependency extends Dependency {
+    constructor(request) {
+      super(request);
+    }
   }
 
   const path$1 = require('path');
@@ -267,7 +305,7 @@
     }
 
     build(callback) {
-      console.log('module: building');
+      console.log(`module(build): parsing resource ${this.resource}\n`);
 
       readFile(this.resource, (err, data) => {
         this._source = data.toString();
@@ -312,7 +350,16 @@
     }
 
     walkImportDeclaration(statement) {
-      
+      this.callSyncBail('import', statement);
+      const { specifiers } = statement;
+      let specifier;
+      debugger
+      for (let i = 0, l = specifiers.length; i < l; i++) {
+        specifier = specifiers[i];
+        if (specifiers.type === 'ImportSpecifier') {
+          this.callSyncBail('import specifier', specifier.imported.name);
+        }
+      }
     }
   }
 
@@ -329,7 +376,7 @@
           const createdModule = new Module({
             request: result.request,
             resource: data,
-            parser: new Parser(),
+            parser: this.getParser(),
           });
 
           return createdModule;
@@ -346,6 +393,12 @@
       });
     }
 
+    getParser() {
+      const parser = new Parser();
+      this.callSync('parser', parser);
+      return parser;
+    }
+
     create(data) {
       const dependencies = data.dependencies;
       const context = data.context;
@@ -354,18 +407,44 @@
       const factory = this.callWaterfall('factory', null);
       const createdModule = factory({context, request});
 
-      console.log(`moduleFactory: created module\n${JSON.stringify(createdModule)}`);
+      debugger
+
+      console.log(`moduleFactory(create): created \n${JSON.stringify(createdModule)}\n`);
       return createdModule;
     }
   }
 
+  class ImportDependencyParserPlugin {
+    constructor() {}
+    
+    apply(parser) {
+      parser.tap('import', (statement) => {
+        const request = statement.source.value;
+        parser.state.current.addDependency(new ImportDependency(request));
+        return true;
+      });
+
+      parser.tap('import specifier', (name) => {
+        
+      });
+    }
+  }
+
   class ModulePlugin {
+    constructor() {}
+
     apply(compiler) {
       compiler.tap('compilation', (compilation, params) => {
         const moduleFactory = new ModuleFactory(params);
         
-        compilation.dependencyFactories.set(ModuleDependency, moduleFactory);
-        compilation.dependencyFactories.set(ImportDependency, ModuleFactory);
+        compilation.dependencyFactories.set(EntryDependency, moduleFactory);
+        compilation.dependencyFactories.set(ImportDependency, moduleFactory);
+
+        moduleFactory.tap('parser', (parser) => {
+          parser.apply(
+            new ImportDependencyParserPlugin()
+          );
+        });
       });
     }
   }

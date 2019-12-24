@@ -15,7 +15,7 @@ export default class ModuleFactory extends Tapable {
         const createdModule = new Module({
           request: result.request,
           resource: data,
-          parser: new Parser(),
+          parser: this.getParser(),
         })
 
         return createdModule;
@@ -32,6 +32,12 @@ export default class ModuleFactory extends Tapable {
     });
   }
 
+  getParser() {
+    const parser = new Parser();
+    this.callSync('parser', parser);
+    return parser;
+  }
+
   create(data) {
     const dependencies = data.dependencies;
     const context = data.context;
@@ -40,7 +46,9 @@ export default class ModuleFactory extends Tapable {
     const factory = this.callWaterfall('factory', null);
     const createdModule = factory({context, request});
 
-    console.log(`moduleFactory: created module\n${JSON.stringify(createdModule)}`);
+    debugger
+
+    console.log(`moduleFactory(create): created \n${JSON.stringify(createdModule)}\n`);
     return createdModule;
   }
 }

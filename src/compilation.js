@@ -19,7 +19,7 @@ export default class Compilation extends Tapable {
       this.entries.push(module);
     }, (module) => {
       slot.module = module;
-      console.log('compilation: entry module completed');
+      console.log('compilation(addEntry): entry module completed\n');
       callback();
     })
   }
@@ -32,14 +32,19 @@ export default class Compilation extends Tapable {
       context,
     });
 
+    this.addModule(createdModule);
+
     onModule(createdModule);
     this.buildModule(createdModule, () => {
       this.processModuleDependencies(createdModule, callback);
     })
   }
 
+  addModule(module) {
+    this.modules.push(module);
+  }
+
   buildModule(module, callback) {
-    console.log(`compilation: starting building module\n${JSON.stringify(module)}`);
     module.build(() => {
       callback();
     })
@@ -69,12 +74,39 @@ export default class Compilation extends Tapable {
   }
 
   addModuleDependencies(module, dependencies, callback) {
-    console.log(`compilation: adding dependencies\n${JSON.stringify(dependencies)}`);
-    callback();
+    console.log(`compilation(addModuleDependencies): adding \n${JSON.stringify(dependencies)}\n`);
+
+    if (dependencies.length === 0) {
+      callback();
+    }
+
+    let i = 0;
+
+    const done = () => {
+      if (++i === dependencies.length) {
+        callback()
+      }
+    }
+
+    for (let i = 0, l = dependencies.length; i < l; i++) {
+      debugger
+      const moduleFactory = this.dependencyFactories.get(dependencies[i][0].constructor);
+      const dependentModule = moduleFactory.create({
+        dependencies: dependencies[i],
+        context: module.context,
+      });
+
+      this.addModule(dependentModule);
+
+      this.buildModule(dependentModule, () => {
+        this.processModuleDependencies(dependentModule, done);
+      })
+    }
   }
 
   seal(callback) {
-    console.log('compilation: sealing');
+    console.log('compilation(seal): sealing\n');
+    debugger
     callback();
   }
 }

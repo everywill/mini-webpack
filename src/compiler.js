@@ -11,7 +11,7 @@ export default class Compiler extends Tapable {
   compile(callback) {
     const compilation = new Compilation(this);
 
-    console.log('compiler: created a new compilation');
+    console.log('compiler(compile): created a new compilation\n');
 
     this.callSync('compilation', compilation, {
       resolver: this.resolver,
@@ -25,12 +25,11 @@ export default class Compiler extends Tapable {
   }
 
   emitAssets(compilation) {
-    console.log('compiler: emitting assets');
+    console.log('compiler(emitAssets): emitting assets');
   }
 
   // compile: make => seal => emit
   run() {
-    console.log('compiler: beginning running');
     this.compile((compilation) => {
       this.emitAssets(compilation);
     })

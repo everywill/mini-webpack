@@ -1,8 +1,7 @@
-export default class ModuleDependency {
+import Dependency from './dependency';
+
+export default class EntryDependency extends Dependency {
   constructor(request) {
-    this.request = request;
-  }
-  isEqualResource(dep) {
-    return dep.request === this.request;
+    super(request);
   }
 }

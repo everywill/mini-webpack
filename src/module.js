@@ -16,7 +16,7 @@ export default class Module {
   }
 
   build(callback) {
-    console.log('module: building');
+    console.log(`module(build): parsing resource ${this.resource}\n`);
 
     readFile(this.resource, (err, data) => {
       this._source = data.toString();

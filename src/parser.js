@@ -29,6 +29,20 @@ export default class Parser extends Tapable {
   }
 
   walkImportDeclaration(statement) {
-    
+    this.callSyncBail('import', statement);
+    const { specifiers } = statement;
+    let specifier;
+    debugger
+    for (let i = 0, l = specifiers.length; i < l; i++) {
+      specifier = specifiers[i];
+      if (specifiers.type === 'ImportSpecifier') {
+        this.callSyncBail('import specifier', specifier.imported.name);
+      }
+    }
+  }
+
+  walkExportNamedDeclaration(statement) {
+    this.callSyncBail('export', statement);
+
   }
 }
