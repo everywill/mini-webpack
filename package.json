@@ -16,6 +16,7 @@
   "license": "MIT",
   "author": "everywill <everywillatchina@gmail.com>",
   "dependencies": {
-    "acorn": "^7.1.0"
+    "acorn": "^7.1.0",
+    "mkdirp": "^0.5.1"
   }
 }

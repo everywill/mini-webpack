@@ -46,8 +46,6 @@ export default class ModuleFactory extends Tapable {
     const factory = this.callWaterfall('factory', null);
     const createdModule = factory({context, request});
 
-    debugger
-
     console.log(`moduleFactory(create): created \n${JSON.stringify(createdModule)}\n`);
     return createdModule;
   }

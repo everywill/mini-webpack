@@ -1,13 +1,22 @@
 import Tapable from './tapable/index';
+import Chunk from './chunk';
+import MainTemplate from './templates/main-template';
+import ModuleTemplate from './templates/module-template';
 
 export default class Compilation extends Tapable {
   constructor(compiler) {
     super();
     this.compiler = compiler;
+    this.options = compiler.options;
     this.entries = [];
+    this.preparedChunks = [];
     this.chunks = []
     this.modules = [];
+    this.assets = [];
+    this.mainTemplate = new MainTemplate();
+    this.moduleTemplate = new ModuleTemplate();
     this.dependencyFactories = new Map();
+    this.dependencyTemplates = new Map();
   }
 
   addEntry(context, entry, name, callback) {
@@ -15,6 +24,7 @@ export default class Compilation extends Tapable {
       name,
       module: null,
     }
+    this.preparedChunks.push(slot);
     this._addModuleChain(context, entry, (module) => {
       this.entries.push(module);
     }, (module) => {
@@ -36,7 +46,9 @@ export default class Compilation extends Tapable {
 
     onModule(createdModule);
     this.buildModule(createdModule, () => {
-      this.processModuleDependencies(createdModule, callback);
+      this.processModuleDependencies(createdModule, () => {
+        callback(createdModule);
+      });
     })
   }
 
@@ -73,6 +85,24 @@ export default class Compilation extends Tapable {
     this.addModuleDependencies(module, dependencies, callback);
   }
 
+  processModuleDependenciesForChunk(module, chunk) {
+    function iterationDependency(dep) {
+      if (dep.module && chunk.addModule(dep.module)) {
+        queue.push(module);
+      }
+    }
+
+    const queue = [ module ];
+
+    while(queue.length) {
+      const currentModule = queue.shift();
+
+      currentModule.dependencies.forEach((dep) => {
+        iterationDependency(dep);
+      });
+    }
+  }
+
   addModuleDependencies(module, dependencies, callback) {
     console.log(`compilation(addModuleDependencies): adding \n${JSON.stringify(dependencies)}\n`);
 
@@ -89,7 +119,6 @@ export default class Compilation extends Tapable {
     }
 
     for (let i = 0, l = dependencies.length; i < l; i++) {
-      debugger
       const moduleFactory = this.dependencyFactories.get(dependencies[i][0].constructor);
       const dependentModule = moduleFactory.create({
         dependencies: dependencies[i],
@@ -97,6 +126,14 @@ export default class Compilation extends Tapable {
       });
 
       this.addModule(dependentModule);
+
+      function iterationDependencies(deps) {
+        for (let i = 0, l = deps.length; i < l; i++) {
+          deps[i].module = dependentModule;
+        }
+      }
+
+      iterationDependencies(dependencies[i]);
 
       this.buildModule(dependentModule, () => {
         this.processModuleDependencies(dependentModule, done);
@@ -107,6 +144,38 @@ export default class Compilation extends Tapable {
   seal(callback) {
     console.log('compilation(seal): sealing\n');
     debugger
+    this.preparedChunks.forEach((preparedChunk) => {
+      const module = preparedChunk.module;
+      const chunk = this.addChunk(preparedChunk.name);
+      
+      chunk.addModule(module);
+      chunk.entryModule = module;
+
+      this.processModuleDependenciesForChunk(module, chunk);
+    });
+
+    this.callSync('module-ids', this.modules);
+
+    this.createChunkAssets();
     callback();
+  }
+
+  createChunkAssets() {
+    const filename = this.options.output.filename;
+    for (let i = 0, l = this.chunks.length; i < l; i++) {
+      const chunk = this.chunks[i];
+      let source;
+      if (chunk.entryModule) {
+        source = this.mainTemplate.render(chunk, this.moduleTemplate, this.dependencyTemplates);
+      }
+      this.assets[filename] = source;
+    }
+  }
+
+  addChunk(chunkName) {
+    const chunk = new Chunk(chunkName);
+    this.chunks.push(chunk);
+
+    return chunk;
   }
 }

@@ -16,6 +16,7 @@ export default class Parser extends Tapable {
   }
 
   walkStatements(statements) {
+    debugger
     for (let i = 0, l = statements.length; i < l; i++) {
       this.walkStatement(statements[i]);
     }
@@ -32,7 +33,6 @@ export default class Parser extends Tapable {
     this.callSyncBail('import', statement);
     const { specifiers } = statement;
     let specifier;
-    debugger
     for (let i = 0, l = specifiers.length; i < l; i++) {
       specifier = specifiers[i];
       if (specifiers.type === 'ImportSpecifier') {

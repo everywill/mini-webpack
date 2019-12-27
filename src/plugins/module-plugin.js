@@ -2,6 +2,7 @@ import EntryDependency from '../dependencies/entry-dependency';
 import ImportDependency from '../dependencies/import-dependency';
 import ModuleFactory from '../module-factory';
 import ImportDependencyParserPlugin from './import-dependency-parser-plugin';
+import ExportDependencyParserPlugin from './export-dependency-parser-plugin';
 
 export default class ModulePlugin {
   constructor() {}
@@ -15,7 +16,8 @@ export default class ModulePlugin {
 
       moduleFactory.tap('parser', (parser) => {
         parser.apply(
-          new ImportDependencyParserPlugin()
+          new ImportDependencyParserPlugin(),
+          new ExportDependencyParserPlugin()
         );
       });
     });

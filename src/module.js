@@ -13,6 +13,7 @@ export default class Module {
     this.context = getContext(params.resource);
     this.dependencies = [];
     this.parser = params.parser;
+    this._source = '';
   }
 
   build(callback) {
@@ -30,5 +31,10 @@ export default class Module {
 
   addDependency(dep) {
     this.dependencies.push(dep);
+  }
+
+  source(dependencyTemplates) {
+    const source = this._source;
+    return source;
   }
 }
