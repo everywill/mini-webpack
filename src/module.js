@@ -35,6 +35,10 @@ export default class Module {
 
   source(dependencyTemplates) {
     const source = this._source;
-    return source;
+    const createdSource = this.dependencies.reduce((s, dep) => {
+      const template = dependencyTemplates.get(dep.constructor);
+      return template.apply(dep, source);
+    }, source);
+    return createdSource;
   }
 }

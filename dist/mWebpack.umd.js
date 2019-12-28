@@ -155,6 +155,20 @@
           return module.exports;
         }
 
+        __require__.d = function(exports, name, getter) {
+          if (!__require__.o(exports, name)) {
+            Object.defineProperty(exports, name, {
+              configurable: false,
+              enumerable: true,
+              get: getter,
+            });
+          }
+        }
+
+        __require__.o = function(object, property) {
+          return Object.prototype.hasOwnProperty.call(object, property);
+        }
+
         __require__(${chunk.entryModule.id});
       }) (${this.renderChunkModules(chunk, moduleTemplate, dependencyTemplates)})
     `;
@@ -299,6 +313,11 @@
           dependencies: dependencies[i],
           context: module.context,
         });
+
+        if (!dependentModule) {
+          done();
+          continue;
+        }
 
         this.addModule(dependentModule);
 
@@ -487,6 +506,12 @@
     }
   }
 
+  ImportDependency.Template = class ImportDependencyTemplate {
+    apply(dep, source) {
+      return source;
+    }
+  };
+
   const path$2 = require('path');
   const fs$1 = require('fs');
   const readFile = fs$1.readFile.bind(fs$1);
@@ -524,7 +549,11 @@
 
     source(dependencyTemplates) {
       const source = this._source;
-      return source;
+      const createdSource = this.dependencies.reduce((s, dep) => {
+        const template = dependencyTemplates.get(dep.constructor);
+        return template.apply(dep, source);
+      }, source);
+      return createdSource;
     }
   }
 
@@ -623,6 +652,12 @@
     }
   }
 
+  class NullFactory {
+    create() {
+      return null;
+    }
+  }
+
   class ImportDependencyParserPlugin {
     constructor() {}
     
@@ -639,11 +674,24 @@
     }
   }
 
+  class ExportDependency extends Dependency {
+    constructor(request) {
+      super(request);
+    }
+  }
+
+  ExportDependency.Template = class ExportDependencyTemplate {
+    apply(dep, source) {
+      return source;
+    }
+  };
+
   class ExportDependencyParserPlugin {
     constructor() {}
 
     apply(parser) {
       parser.tap('export', (statement) => {
+        parser.state.current.addDependency(new ExportDependency());
         return true;
       });
     }
@@ -655,9 +703,16 @@
     apply(compiler) {
       compiler.tap('compilation', (compilation, params) => {
         const moduleFactory = new ModuleFactory(params);
+        const nullFactory = new NullFactory();
         
         compilation.dependencyFactories.set(EntryDependency, moduleFactory);
+
         compilation.dependencyFactories.set(ImportDependency, moduleFactory);
+        compilation.dependencyTemplates.set(ImportDependency, new ImportDependency.Template());
+
+        compilation.dependencyFactories.set(ExportDependency, nullFactory);
+        compilation.dependencyTemplates.set(ExportDependency, new ExportDependency.Template());
+
 
         moduleFactory.tap('parser', (parser) => {
           parser.apply(

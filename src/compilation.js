@@ -125,6 +125,11 @@ export default class Compilation extends Tapable {
         context: module.context,
       });
 
+      if (!dependentModule) {
+        done();
+        continue;
+      }
+
       this.addModule(dependentModule);
 
       function iterationDependencies(deps) {

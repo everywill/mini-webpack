@@ -23,6 +23,20 @@ export default class MainTemplate extends Template {
           return module.exports;
         }
 
+        __require__.d = function(exports, name, getter) {
+          if (!__require__.o(exports, name)) {
+            Object.defineProperty(exports, name, {
+              configurable: false,
+              enumerable: true,
+              get: getter,
+            });
+          }
+        }
+
+        __require__.o = function(object, property) {
+          return Object.prototype.hasOwnProperty.call(object, property);
+        }
+
         __require__(${chunk.entryModule.id});
       }) (${this.renderChunkModules(chunk, moduleTemplate, dependencyTemplates)})
     `;

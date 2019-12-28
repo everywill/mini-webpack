@@ -1,6 +1,6 @@
-import Tapable from './tapable/index';
-import Module from './module';
-import Parser from './parser';
+import Tapable from '../tapable/index';
+import Module from '../module';
+import Parser from '../parser';
 
 export default class ModuleFactory extends Tapable {
   constructor(params) {
