@@ -32,13 +32,46 @@ export default class Parser extends Tapable {
     }
   }
 
+  walkExpressionStatement(statement) {
+		this.walkExpression(statement.expression);
+  }
+  
+  walkExpression(expression) {
+		if(this["walk" + expression.type])
+			return this["walk" + expression.type](expression);
+  }
+  
+  walkCallExpression(expression) {
+    if(expression.arguments) {
+      for (let i = 0, l = expression.arguments.length; i < l; i++) {
+        this.walkExpression(expression.arguments[i]);
+      }
+    }
+  }
+
+  walkBinaryExpression(expression) {
+		this.walkLeftRightExpression(expression);
+  }
+  
+  walkLeftRightExpression(expression) {
+		this.walkExpression(expression.left);
+		this.walkExpression(expression.right);
+  }
+  
+  walkIdentifier(expression) {
+    debugger
+		if(this.state.importSpecifiers && this.state.importSpecifiers[expression.name]) {
+			this.callSyncBail('expression imported var', expression);
+		}
+	}
+
   walkImportDeclaration(statement) {
     this.callSyncBail('import', statement);
     const { specifiers } = statement;
     let specifier;
     for (let i = 0, l = specifiers.length; i < l; i++) {
       specifier = specifiers[i];
-      if (specifiers.type === 'ImportSpecifier') {
+      if (specifier.type === 'ImportSpecifier') {
         this.callSyncBail('import specifier', specifier.imported.name);
       }
     }

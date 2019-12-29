@@ -35,6 +35,9 @@ export default class Module {
 
   source(dependencyTemplates) {
     const source = this._source;
+    this.dependencies.sort((depA, depB) => {
+      return -(depA.start - depB.start);
+    });
     const createdSource = this.dependencies.reduce((s, dep) => {
       const template = dependencyTemplates.get(dep.constructor);
       return template.apply(dep, s);

@@ -537,6 +537,9 @@
 
     source(dependencyTemplates) {
       const source = this._source;
+      this.dependencies.sort((depA, depB) => {
+        return -(depA.start - depB.start);
+      });
       const createdSource = this.dependencies.reduce((s, dep) => {
         const template = dependencyTemplates.get(dep.constructor);
         return template.apply(dep, s);
@@ -576,13 +579,46 @@
       }
     }
 
+    walkExpressionStatement(statement) {
+  		this.walkExpression(statement.expression);
+    }
+    
+    walkExpression(expression) {
+  		if(this["walk" + expression.type])
+  			return this["walk" + expression.type](expression);
+    }
+    
+    walkCallExpression(expression) {
+      if(expression.arguments) {
+        for (let i = 0, l = expression.arguments.length; i < l; i++) {
+          this.walkExpression(expression.arguments[i]);
+        }
+      }
+    }
+
+    walkBinaryExpression(expression) {
+  		this.walkLeftRightExpression(expression);
+    }
+    
+    walkLeftRightExpression(expression) {
+  		this.walkExpression(expression.left);
+  		this.walkExpression(expression.right);
+    }
+    
+    walkIdentifier(expression) {
+      debugger
+  		if(this.state.importSpecifiers && this.state.importSpecifiers[expression.name]) {
+  			this.callSyncBail('expression imported var', expression);
+  		}
+  	}
+
     walkImportDeclaration(statement) {
       this.callSyncBail('import', statement);
       const { specifiers } = statement;
       let specifier;
       for (let i = 0, l = specifiers.length; i < l; i++) {
         specifier = specifiers[i];
-        if (specifiers.type === 'ImportSpecifier') {
+        if (specifier.type === 'ImportSpecifier') {
           this.callSyncBail('import specifier', specifier.imported.name);
         }
       }
@@ -670,15 +706,45 @@
   }
 
   class ImportDependency extends Dependency {
-    constructor(request) {
+    constructor(request, statement) {
       super();
       this.request = request;
+      this.start = statement.start;
+      this.end = statement.end;
     }
   }
 
   ImportDependency.Template = class ImportDependencyTemplate {
     apply(dep, source) {
-      return source;
+      return source.slice(0, dep.start) + this.makeImportStatement(dep) + source.slice(dep.end);
+    }
+
+    makeImportStatement(dep) {
+      const idx = dep.module.id;
+      const content = `var __IMPORTED_MODULE_${idx}__ = __require__(${idx});\n`;
+      return content;
+    }
+  };
+
+  class ImportSpecifierDependency extends Dependency {
+    constructor(name, expression, importedDep) {
+      super();
+      this.name = name;
+      this.start = expression.start;
+      this.end = expression.end;
+      this.importedDep = importedDep;
+    }
+  }
+
+  ImportSpecifierDependency.Template = class ImportSpecifierDependencyTemplate {
+    apply(dep, source) {
+      debugger
+      return source.slice(0, dep.start) + this.makeImportStatement(dep) + source.slice(dep.end);
+    }
+
+    makeImportStatement(dep) {
+      const { importedDep, name } = dep;
+      return `__IMPORTED_MODULE_${importedDep.module.id}__['${name}']`;
     }
   };
 
@@ -688,12 +754,23 @@
     apply(parser) {
       parser.tap('import', (statement) => {
         const request = statement.source.value;
-        parser.state.current.addDependency(new ImportDependency(request));
+        parser.state.current.addDependency(new ImportDependency(request, statement));
         return true;
       });
 
       parser.tap('import specifier', (name) => {
-        
+        const currentModule = parser.state.current;
+        const lastDep = currentModule.dependencies[currentModule.dependencies.length - 1];
+        parser.state.importSpecifiers = parser.state.importSpecifiers || {};
+        parser.state.importSpecifiers[name] = lastDep;
+        return true;
+      });
+
+      parser.tap('expression imported var', (expression) => {
+        const name = expression.name;
+        const importedDep = parser.state.importSpecifiers[name];
+        parser.state.current.addDependency(new ImportSpecifierDependency(name, expression, importedDep));
+        return true;
       });
     }
   }
@@ -719,20 +796,19 @@
   class ExportSpecifierDependency extends Dependency {
     constructor(statement, def) {
       super();
-      this.insertIndex = statement.start;
+      this.start = statement.start;
       this.def = def;
     }
   }
 
   ExportSpecifierDependency.Template = class ExportSpecifierDependencyTemplate {
     apply(dep, source) {
-      debugger
-      return source.slice(0, dep.insertIndex) + this.getContent(dep) + source.slice(dep.insertIndex);
+      return source.slice(0, dep.start) + this.getContent(dep) + source.slice(dep.start);
     }
 
     getContent(dep) {
       const { def } = dep;
-      return `__require__.d(__exports__, '${def.name}', function() {return ${def.name}})\n`;
+      return `__require__.d(__exports__, '${def.name}', function() {return ${def.name}});\n`;
     }
   };
 
@@ -764,6 +840,9 @@
 
         compilation.dependencyFactories.set(ImportDependency, moduleFactory);
         compilation.dependencyTemplates.set(ImportDependency, new ImportDependency.Template());
+
+        compilation.dependencyFactories.set(ImportSpecifierDependency, nullFactory);
+        compilation.dependencyTemplates.set(ImportSpecifierDependency, new ImportSpecifierDependency.Template());
 
         compilation.dependencyFactories.set(ExportHeaderDependency, nullFactory);
         compilation.dependencyTemplates.set(ExportHeaderDependency, new ExportHeaderDependency.Template());

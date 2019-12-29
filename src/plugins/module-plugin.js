@@ -7,6 +7,7 @@ import ImportDependencyParserPlugin from './import-dependency-parser-plugin';
 import ExportDependencyParserPlugin from './export-dependency-parser-plugin';
 
 import ImportDependency from '../dependencies/import-dependency';
+import ImportSpecifierDependency from '../dependencies/import-specifier-dependency';
 import ExportHeaderDependency from '../dependencies/export-header-dependency';
 import ExportSpecifierDependency from '../dependencies/export-specifier-dependency';
 
@@ -22,6 +23,9 @@ export default class ModulePlugin {
 
       compilation.dependencyFactories.set(ImportDependency, moduleFactory);
       compilation.dependencyTemplates.set(ImportDependency, new ImportDependency.Template());
+
+      compilation.dependencyFactories.set(ImportSpecifierDependency, nullFactory);
+      compilation.dependencyTemplates.set(ImportSpecifierDependency, new ImportSpecifierDependency.Template());
 
       compilation.dependencyFactories.set(ExportHeaderDependency, nullFactory);
       compilation.dependencyTemplates.set(ExportHeaderDependency, new ExportHeaderDependency.Template());
