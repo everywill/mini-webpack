@@ -462,8 +462,7 @@
   }
 
   class Dependency {
-    constructor(request) {
-      this.request = request;
+    constructor() {
       this.module = null;
     }
     isEqualResource(dep) {
@@ -473,7 +472,8 @@
 
   class EntryDependency extends Dependency {
     constructor(request) {
-      super(request);
+      super();
+      this.request = request;
     }
   }
 
@@ -499,18 +499,6 @@
       });
     }
   }
-
-  class ImportDependency extends Dependency {
-    constructor(request) {
-      super(request);
-    }
-  }
-
-  ImportDependency.Template = class ImportDependencyTemplate {
-    apply(dep, source) {
-      return source;
-    }
-  };
 
   const path$2 = require('path');
   const fs$1 = require('fs');
@@ -551,7 +539,7 @@
       const source = this._source;
       const createdSource = this.dependencies.reduce((s, dep) => {
         const template = dependencyTemplates.get(dep.constructor);
-        return template.apply(dep, source);
+        return template.apply(dep, s);
       }, source);
       return createdSource;
     }
@@ -562,6 +550,9 @@
       super();
       // store the processing module
       this.state = undefined;
+      this.scope = {
+        definitions: [],
+      };
     }
     parse(source, state) {
       this.state = state;
@@ -600,6 +591,26 @@
     walkExportNamedDeclaration(statement) {
       this.callSyncBail('export', statement);
 
+      if (statement.declaration) {
+        const pos = this.scope.definitions.length;
+        this.walkStatement(statement.declaration);
+        const newDefs = this.scope.definitions.slice(pos);
+        for (let i = 0, l = newDefs.length; i < l; i++) {
+          const def = newDefs[i];
+          this.callSyncBail('export specifier', statement, def);
+        }
+      }
+    }
+
+    walkVariableDeclaration(statement) {
+      this.walkVariableDeclarators(statement.declarations);
+    }
+
+    walkVariableDeclarators(declarators) {
+      for (let i = 0, l = declarators.length; i < l; i++) {
+        const declarator = declarators[i];
+        this.scope.definitions.push(declarator.id);
+      }
     }
   }
 
@@ -658,6 +669,19 @@
     }
   }
 
+  class ImportDependency extends Dependency {
+    constructor(request) {
+      super();
+      this.request = request;
+    }
+  }
+
+  ImportDependency.Template = class ImportDependencyTemplate {
+    apply(dep, source) {
+      return source;
+    }
+  };
+
   class ImportDependencyParserPlugin {
     constructor() {}
     
@@ -674,15 +698,41 @@
     }
   }
 
-  class ExportDependency extends Dependency {
-    constructor(request) {
-      super(request);
+  class ExportHeaderDependency extends Dependency {
+    constructor(statement) {
+      super();
+      this.start = statement.start;
+      this.end = statement.end;
+      if (statement.declaration) {
+        this.end = statement.declaration.start;
+      }
     }
   }
 
-  ExportDependency.Template = class ExportDependencyTemplate {
+  ExportHeaderDependency.Template = class ExportHeaderDependencyTemplate {
     apply(dep, source) {
-      return source;
+      const exportHeader = source.substring(dep.start, dep.end);
+      return source.replace(exportHeader, '');
+    }
+  };
+
+  class ExportSpecifierDependency extends Dependency {
+    constructor(statement, def) {
+      super();
+      this.insertIndex = statement.start;
+      this.def = def;
+    }
+  }
+
+  ExportSpecifierDependency.Template = class ExportSpecifierDependencyTemplate {
+    apply(dep, source) {
+      debugger
+      return source.slice(0, dep.insertIndex) + this.getContent(dep) + source.slice(dep.insertIndex);
+    }
+
+    getContent(dep) {
+      const { def } = dep;
+      return `__require__.d(__exports__, '${def.name}', function() {return ${def.name}})\n`;
     }
   };
 
@@ -691,7 +741,12 @@
 
     apply(parser) {
       parser.tap('export', (statement) => {
-        parser.state.current.addDependency(new ExportDependency());
+        parser.state.current.addDependency(new ExportHeaderDependency(statement));
+        return true;
+      });
+
+      parser.tap('export specifier', (statement, def) => {
+        parser.state.current.addDependency(new ExportSpecifierDependency(statement, def));
         return true;
       });
     }
@@ -710,9 +765,11 @@
         compilation.dependencyFactories.set(ImportDependency, moduleFactory);
         compilation.dependencyTemplates.set(ImportDependency, new ImportDependency.Template());
 
-        compilation.dependencyFactories.set(ExportDependency, nullFactory);
-        compilation.dependencyTemplates.set(ExportDependency, new ExportDependency.Template());
+        compilation.dependencyFactories.set(ExportHeaderDependency, nullFactory);
+        compilation.dependencyTemplates.set(ExportHeaderDependency, new ExportHeaderDependency.Template());
 
+        compilation.dependencyFactories.set(ExportSpecifierDependency, nullFactory);
+        compilation.dependencyTemplates.set(ExportSpecifierDependency, new ExportSpecifierDependency.Template());
 
         moduleFactory.tap('parser', (parser) => {
           parser.apply(

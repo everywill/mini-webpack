@@ -1,6 +1,5 @@
 export default class Dependency {
-  constructor(request) {
-    this.request = request;
+  constructor() {
     this.module = null;
   }
   isEqualResource(dep) {
